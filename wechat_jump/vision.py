@@ -47,7 +47,21 @@ def _components(mask):
         yield (left, top, right+1, bottom+1, count)
 
 
-def _surface_box(rgb, foreground, box):
+def _round_surface(surface, box):
+    """Require a filled, complete projected circle before accepting a small face."""
+    a, b, c, d = box
+    width, height = c-a, d-b
+    w = surface.shape[1]
+    if not (.045*w <= width <= .18*w and .35 <= height/width <= .7):
+        return False
+    yy, xx = np.mgrid[b:d, a:c]
+    ellipse = (((xx+.5-(a+c)/2)/(width/2))**2
+               + ((yy+.5-(b+d)/2)/(height/2))**2 <= 1)
+    actual = surface[b:d, a:c]
+    return np.count_nonzero(actual & ellipse)/np.count_nonzero(actual | ellipse) >= .90
+
+
+def _surface_box(rgb, foreground, box, *, round_only=False):
     """Find the top face by its cap color, excluding side faces and cast shadows."""
     x1, y1, x2, y2, _ = box
     w = rgb.shape[1]
@@ -66,9 +80,12 @@ def _surface_box(rgb, foreground, box):
     options = []
     for a, b, c, d, area in _components(surface):
         width, height = c-a, d-b
-        if (.08*w <= width <= .65*w and .15 <= height/width <= .95
-                and b <= y1+.025*w and abs((a+c)/2-cap_x) < .12*w
-                and area >= .002*w*w):
+        regular = (not round_only and .08*w <= width <= .65*w
+                   and .15 <= height/width <= .95 and area >= .002*w*w)
+        small_round = (area >= .0005*w*w
+                       and _round_surface(surface, (a, b, c, d)))
+        if ((regular or small_round) and b <= y1+.025*w
+                and abs((a+c)/2-cap_x) < .12*w):
             options.append((a, b, c, d, area))
     if not options:
         return None
@@ -230,14 +247,22 @@ def detect(image: Image.Image) -> Detection:
     else:
         foreground[:, round(px-.09*w):] = False
     candidates = []
+    small_faces = {}
     for box in _components(foreground):
         x1, y1, x2, y2, area = box
         bw, bh = x2-x1, y2-y1
         # Include narrow platforms with tall stems; the landing face is
         # validated separately below, rather than treating the stem as a face.
-        if (.10*w <= bw <= .75*w and .15*bw <= bh <= 2.2*bw
+        if (.05*w <= bw <= .75*w and .15*bw <= bh <= 2.2*bw
                 and y1 > h*.22+2
-                and area > .002*w*w and abs((x1+x2)/2-px) > .14*w):
+                and area > .0007*w*w and abs((x1+x2)/2-px) > .14*w):
+            if bw < .10*w or area <= .002*w*w:
+                # Pale rims can disconnect a tiny cap from its stem. Only a
+                # complete elliptical top may bypass the normal object size.
+                small_face = _surface_box(rgb, foreground, box, round_only=True)
+                if small_face is None:
+                    continue
+                small_faces[box] = small_face
             candidates.append(box)
     candidates.sort(key=lambda item: item[1])
     if not candidates:
@@ -251,7 +276,9 @@ def detect(image: Image.Image) -> Detection:
     tx = float(xs.mean()+x1)
     ty = float(y1+.29*bw)
     method = 'platform_geometry'
-    face = _surface_box(rgb, foreground, candidates[0])
+    face = small_faces.get(candidates[0])
+    if face is None:
+        face = _surface_box(rgb, foreground, candidates[0])
     if face is not None and abs((face[0]+face[2]-1)/2-tx) > .025*w:
         face = None  # A decoration-separated color patch is not the whole face.
     edge_face = _edge_face(foreground, full_foreground, candidates[0])

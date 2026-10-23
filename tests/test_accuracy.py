@@ -18,6 +18,62 @@ from wechat_jump.vision import DetectionError, detect
 
 
 class AccuracyTests(TestCase):
+    def test_small_disconnected_white_pedestal(self):
+        with Image.open(Path(__file__).parent/'fixtures'/'desktop-small-white-pedestal.png') as original:
+            for width in (360, 540, 699, 1080):
+                for mirrored in (False, True):
+                    with self.subTest(width=width, mirrored=mirrored):
+                        scale = width/original.width
+                        image = original.resize((width, round(original.height*scale)))
+                        if mirrored:
+                            image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                        result = detect(image)
+                        ex = width-1-512*scale if mirrored else 512*scale
+                        self.assertAlmostEqual(result.target[0], ex, delta=4)
+                        self.assertAlmostEqual(result.target[1], 571*scale, delta=4)
+                        self.assertLess(result.platform_box[3], 600*scale)
+
+    def small_platform(self, diameter, shape='ellipse', color='#f6f6f6'):
+        image = scene(marker=False)
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((200, 240, 320, 320), fill=(210, 220, 225))
+        # The pale rim leaves a background-colored gap above the stem.
+        draw.polygon([(255, 300), (265, 300), (270, 337), (250, 337)], fill='#999999')
+        box = (260-diameter/2, 285-diameter/4,
+               260+diameter/2, 285+diameter/4)
+        getattr(draw, shape)(box, fill=color)
+        return image
+
+    def test_small_round_faces_across_sizes_colors_and_directions(self):
+        for diameter in (20, 26, 32, 40, 52):
+            for color in ('#f6f6f6', '#66996a'):
+                for mirrored in (False, True):
+                    with self.subTest(diameter=diameter, color=color, mirrored=mirrored):
+                        image = self.small_platform(diameter, color=color)
+                        if mirrored:
+                            image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                        result = detect(image)
+                        self.assertAlmostEqual(result.target[0], 99 if mirrored else 260, delta=2)
+                        self.assertAlmostEqual(result.target[1], 285, delta=2)
+
+    def test_small_rectangular_patch_is_not_a_round_landing_face(self):
+        for diameter in (20, 26):
+            with self.subTest(diameter=diameter):
+                with self.assertRaises(DetectionError):
+                    detect(self.small_platform(diameter, shape='rectangle'))
+
+    def test_small_partial_or_hollow_round_face_is_rejected(self):
+        for diameter in (20, 26, 32):
+            for damage in ('half', 'hole'):
+                with self.subTest(diameter=diameter, damage=damage):
+                    image = self.small_platform(diameter)
+                    draw = ImageDraw.Draw(image)
+                    box = ((260-diameter/2, 270, 260, 299) if damage == 'half'
+                           else (255, 282, 265, 288))
+                    draw.rectangle(box, fill=(210, 220, 225))
+                    with self.assertRaises(DetectionError):
+                        detect(image)
+
     def test_narrow_round_platform_with_tall_stem(self):
         with Image.open(Path(__file__).parent/'fixtures'/'desktop-green-pedestal.png') as original:
             for width in (360, 699, 1080):
