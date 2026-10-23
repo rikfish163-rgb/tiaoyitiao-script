@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+config.json
+runs/
+calibration.json
+samples.json
+*.log
+.env
+.env.*
+.pytest_cache/

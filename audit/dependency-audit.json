@@ -1,0 +1,18 @@
+{
+  "checked_on_client_date": "2026-10-22",
+  "source": "https://api.osv.dev/v1/querybatch",
+  "packages": {
+    "Pillow": "13.0.0",
+    "numpy": "2.4.4",
+    "python-xlib": "0.33",
+    "six": "1.17.0"
+  },
+  "response": {
+    "results": [
+      {},
+      {},
+      {},
+      {}
+    ]
+  }
+}

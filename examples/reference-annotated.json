@@ -1,0 +1,15 @@
+{
+  "jump": 0,
+  "piece": [
+    216.21428571428572,
+    302.88
+  ],
+  "target": [
+    144.5,
+    255.5
+  ],
+  "head_diameter": 16.0,
+  "distance": 85.95233083232941,
+  "press_ms": 451.1,
+  "method": "white_marker"
+}
