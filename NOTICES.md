@@ -36,3 +36,8 @@ https://github.com/wangshub/wechat_jump_game/blob/master/resource/image/jump.gif
 第 8 跳前后原始游戏窗口截图，分别用于验证顶面侧面分离、阴影触边时的平台识别。
 `examples/green-marker-corrected.png` 与 `striped-platform-corrected.png` 是离线标注结果。
 这些图只含游戏窗口；素材权利说明与上述游戏截图相同。
+
+`desktop-marble.png`、`desktop-striped-roof.png`、`desktop-occluded-turntable.png` 位于
+`tests/fixtures/`，来源为后续本地运行的游戏窗口原图，分别用于纹理顶面、装饰条与头径、遮挡拒绝回归。
+`examples/desktop-marble-corrected.png` 与 `desktop-striped-roof-corrected.png` 为离线标注版本。
+没有收录用户提交的整张桌面截图；上述游戏素材权利说明继续适用。

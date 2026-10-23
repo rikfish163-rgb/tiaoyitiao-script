@@ -75,6 +75,76 @@ def _surface_box(rgb, foreground, box):
     return max(options, key=lambda item: item[4])[:4]
 
 
+def _edge_face(foreground, full_foreground, box):
+    """Fit both upper diamond edges; texture and painted stripes do not matter.
+
+    Require straight, symmetric slopes and matching edge lengths. Use the
+    uncut foreground so the piece-exclusion mask cannot invent a corner.
+    If one corner meets an occluder, the other must independently fix its size.
+    """
+    x1, y1, x2, y2, _ = box
+    h, w = foreground.shape
+    region = foreground[y1:y2, x1:x2]
+    present = region.any(axis=0)
+    top = np.where(present, region.argmax(axis=0)+y1, np.nan)
+    apex = float(np.flatnonzero(top <= y1+1).mean()+x1)
+    region = full_foreground[y1:y2, :]
+    top = np.where(region.any(axis=0), region.argmax(axis=0)+y1, np.nan)
+    slopes, corners, occluded = [], [], []
+    for direction in (-1, 1):
+        xs = np.arange(round(apex)+direction, -1 if direction < 0 else w, direction)
+        dx = np.abs(xs-apex)
+        ys = top[xs]
+        fit = (dx >= 3) & (dx <= .08*w) & np.isfinite(ys)
+        if fit.sum() < .025*w:
+            return None
+        slope, intercept = np.polyfit(dx[fit], ys[fit], 1)
+        residual = np.abs(ys[fit]-(intercept+slope*dx[fit]))
+        if not (.4 <= slope <= .75 and residual.max() <= 2
+                and abs(intercept-y1) <= 3):
+            return None
+        slopes.append(slope)
+        follows = np.isfinite(ys) & (np.abs(ys-(intercept+slope*dx)) <= 3)
+        # Stop at the first sustained break, ignoring a one-pixel raster notch.
+        end = len(xs)
+        for i in range(2, len(xs)-1):
+            if not follows[i] and not follows[i+1]:
+                end = i
+                break
+        if end < 3 or end == len(xs):
+            return None
+        corner_x = int(xs[end-1])
+        if not .01*w < corner_x < .99*w:
+            return None
+        occluded.append(bool(np.any(ys[end:end+2] < intercept+slope*dx[end:end+2]-3)))
+        corners.append((corner_x, float(intercept+slope*dx[end-1])))
+    if abs(slopes[0]-slopes[1]) > .08:
+        return None
+    left, right = corners
+    center_x, center_y = (left[0]+right[0])/2, (left[1]+right[1])/2
+    half_width, half_height = (right[0]-left[0])/2, center_y-y1
+    # This fallback handles nearly symmetric diamonds, not arbitrary outlines.
+    if abs(center_x-apex) > .02*w:
+        return None
+    if any(occluded):
+        if all(occluded) or abs((apex-left[0])-(right[0]-apex)) > .025*w:
+            return None
+        corner = right if occluded[0] else left
+        half_width = abs(corner[0]-apex)
+        half_height = half_width*float(np.mean(slopes))
+        center_x, center_y = apex, y1+half_height
+        left, right = (round(apex-half_width), center_y), (round(apex+half_width), center_y)
+    a, b = left[0], y1
+    c, d = right[0]+1, round(y1+2*half_height)+1
+    if not (.04*w <= half_width <= .325*w and .01*w < a < c < .99*w and d < h):
+        return None
+    yy, xx = np.mgrid[b:d, a:c]
+    inside = (abs(xx-center_x)/half_width + abs(yy-center_y)/half_height) < .85
+    if full_foreground[b:d, a:c][inside].mean() < .9:
+        return None
+    return (a, b, c, d)
+
+
 def detect(image: Image.Image) -> Detection:
     width, height = image.size
     if not (180 <= width <= 2400 and 280 <= height <= 4000):
@@ -118,7 +188,16 @@ def detect(image: Image.Image) -> Detection:
         if (.025*w <= hw <= .12*w and .7 <= hw/hh <= 1.5
                 and abs((a+d-l-rr)/2) < .025*w and e <= t+.01*w
                 and area >= .0002*w*w):
-            heads.append((area, hw))
+            # A blue-gray cast shadow can join the sphere's lower half.
+            # Its upper half still contains the sphere's full diameter but
+            # separates that shadow into a different component.
+            cap_end = min(e, c+round(.55*(rr-l)))
+            cap = isolated[c:cap_end, a:d]
+            for ca, cb, cc, cd, cap_area in _components(cap):
+                cap_width = cc-ca
+                if (.025*w <= cap_width <= 1.15*(rr-l)
+                        and abs((ca+cc)/2+a-(l+rr)/2) < .025*w):
+                    heads.append((cap_area, cap_width))
     if heads:
         head = float(max(heads)[1])
     if head < .018*w:
@@ -144,6 +223,7 @@ def detect(image: Image.Image) -> Detection:
     edge = max(2, round(.005*w))
     foreground[:, :edge] = False
     foreground[:, -edge:] = False
+    full_foreground = foreground.copy()
     # Search the side opposite the current piece, leaving its body out.
     if px < w/2:
         foreground[:, :round(px+.09*w)] = False
@@ -170,6 +250,14 @@ def detect(image: Image.Image) -> Detection:
     ty = float(y1+.29*bw)
     method = 'platform_geometry'
     face = _surface_box(rgb, foreground, candidates[0])
+    if face is not None and abs((face[0]+face[2]-1)/2-tx) > .025*w:
+        face = None  # A decoration-separated color patch is not the whole face.
+    edge_face = _edge_face(foreground, full_foreground, candidates[0])
+    if edge_face is not None and (face is None or
+            max(abs((face[k]+face[k+2])-(edge_face[k]+edge_face[k+2]))/2
+                for k in (0, 1)) > .02*w):
+        face = edge_face
+        method = 'platform_edges'
     if face is not None:
         x1, y1, x2, y2 = face
         if x1 <= .01*w or x2 >= .99*w:

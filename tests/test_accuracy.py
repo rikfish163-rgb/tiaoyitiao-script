@@ -18,6 +18,35 @@ from wechat_jump.vision import DetectionError, detect
 
 
 class AccuracyTests(TestCase):
+    def test_textured_marble_and_decorated_roof_have_correct_centers(self):
+        for filename, expected in [('desktop-marble.png', (440, 612)),
+                                   ('desktop-striped-roof.png', (475, 590))]:
+            with Image.open(Path(__file__).parent/'fixtures'/filename) as original:
+                for width in (360, 699, 1080):
+                    for mirrored in (False, True):
+                        with self.subTest(filename=filename, width=width, mirrored=mirrored):
+                            scale = width/original.width
+                            image = original.resize((width, round(original.height*scale)))
+                            if mirrored:
+                                image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                            result = detect(image)
+                            ex = width-1-expected[0]*scale if mirrored else expected[0]*scale
+                            self.assertAlmostEqual(result.target[0], ex, delta=5)
+                            self.assertAlmostEqual(result.target[1], expected[1]*scale, delta=5)
+
+    def test_background_shadow_does_not_enlarge_piece_head(self):
+        with Image.open(Path(__file__).parent/'fixtures'/'desktop-striped-roof.png') as image:
+            result = detect(image)
+        self.assertAlmostEqual(result.head_diameter, 39, delta=3)
+
+    def test_occluded_turntable_does_not_use_partial_color_patch_as_face(self):
+        with Image.open(Path(__file__).parent/'fixtures'/'desktop-occluded-turntable.png') as original:
+            for mirrored in (False, True):
+                with self.subTest(mirrored=mirrored):
+                    image = original.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if mirrored else original
+                    with self.assertRaises(DetectionError):
+                        detect(image)
+
     def test_green_face_excludes_similar_side_and_finds_center_marker(self):
         with Image.open(Path(__file__).parent/'fixtures'/'desktop-green-marker.png') as image:
             result = detect(image)
