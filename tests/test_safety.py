@@ -1,16 +1,18 @@
 from pathlib import Path
 from types import SimpleNamespace as NS
-from unittest import TestCase
+from unittest import TestCase, skipUnless
+import sys
 from unittest.mock import Mock, patch
 from dataclasses import replace
 
 from PIL import Image
-from Xlib import X
+if sys.platform.startswith('linux'):
+    from Xlib import X
+    from wechat_jump.x11 import Desktop, X11Backend
 
 from wechat_jump.cli import validate_config
 from wechat_jump.control import SafetyStop, guarded_press, run_loop
 from wechat_jump.vision import detect
-from wechat_jump.x11 import Desktop, X11Backend
 from test_jump import FakeIO, scene
 
 
@@ -68,6 +70,7 @@ class RuntimeTests(TestCase):
         self.assertEqual(io.events, [])
 
 
+@skipUnless(sys.platform.startswith('linux'), 'X11 guards require python-xlib on Linux')
 class DesktopGuardTests(TestCase):
     def backend(self):
         backend = X11Backend.__new__(X11Backend)

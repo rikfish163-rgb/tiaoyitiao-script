@@ -1,14 +1,34 @@
 # 跳一跳脚本
 
-面向 **Linux 桌面微信小程序 + X11** 的首个可运行实现。使用本机截图、图像识别和 XTEST 鼠标长按，不需要安卓手机或 ADB。当前检测环境为 Ubuntu GNOME、X11、Python 3.12。
+面向 **Linux X11 / Windows 10、11 桌面微信小程序**。使用本机截图、图像识别和系统鼠标输入，不需要安卓手机或 ADB。Linux 使用 XTEST，Windows 使用 Win32 SendInput。
 
-**0.2.2 为实验版本，连续运行仍不稳定。** 增加纹理平台的菱形边缘验证，修复装饰条导致的局部色块误判，以及阴影粘连导致的头径放大。遮挡严重、无法验证完整顶面的平台仍会停止。
+**0.3.0 为实验版本。** 新增 Windows 后端、安装/启动脚本及跨系统测试；修复细长底座圆台被提前过滤的问题。遮挡严重、无法验证完整顶面的平台仍会停止。
 没有当前设备的校准样本时仍使用未校准公式，不保证默认精准，也没有经过受控试验的命中率数据。
 完整原因、参考项目对照与剩余不足见 [准确性复盘](docs/accuracy-review.md)。
 
-**验证边界：已通过自动测试和真实游戏画面的离线回归；用户已运行截图与跳跃流程并反馈偏差，但尚未完成受控实机校准。** 几何定位和初始按压系数属于启发式参数，第一次请先预览，再单步校准。
+**验证边界：Linux 已有用户实际运行记录；Windows 微信小游戏尚未实机验收。** 自动测试、Windows API 检查和截图回归不代表已完成受控实机校准。第一次请先预览，再单步校准。
 
 ## 安装
+
+### Windows 10 / 11
+
+需要 Windows 10 1703+ 或 Windows 11、Python 3.11+（推荐 64 位 Python 3.12），并能在桌面微信中打开独立的「跳一跳」窗口。解压源码后，在项目目录打开 PowerShell：
+
+```powershell
+.\install.cmd
+.\start.cmd setup --auto --preview --delay 8
+.\start.cmd run --max-jumps 1 --delay 8
+```
+
+倒计时内切换到游戏窗口。自动选区使用客户区，不包含系统窗口边框；自绘的微信标题栏可能仍在其中。
+无需拖动框选，不需要安装 X11、OpenCV 或 pywin32。`install.cmd` 只在本目录创建 `.venv`。
+微信与脚本均使用普通用户权限。Windows 使用 DPI 感知的物理像素坐标；窗口须完整位于同一显示器内。
+窗口重启、移动、缩放或跨显示器后重新 setup。不要复制 Linux 的 `config.json`、虚拟环境或校准参数到 Windows。
+
+其余命令将 `bash start.sh` 换成 `.\start.cmd` 即可。Windows 不支持 `--pick`，可用自动选区或 `--crop`。
+详细限制及 Win32 API 来源见 [Windows 使用说明](docs/windows.md)。
+
+### Linux X11
 
 需要 Python 3.11+，以及可正常启动小程序的 Linux 微信。以下操作只在本目录创建 `.venv`，不修改全局 Python 包：
 
@@ -18,7 +38,7 @@ bash install.sh
 
 如果提示缺少 `venv`，Ubuntu 可用系统包管理器安装 `python3-venv` 后重试。项目不需要 Tkinter、OpenCV、管理员运行、浏览器插件或修改微信文件。
 
-`requirements.txt` 固定了测试依赖：Pillow 13.0.0、NumPy 2.4.4、python-xlib 0.33、six 1.17.0。Pillow 12.2.0 的漏洞审计存在已知记录，因此启动入口要求至少 Pillow 13。
+`requirements.txt` 固定了测试依赖：Pillow 13.0.0、NumPy 2.4.4；仅 Linux 安装 python-xlib 0.33、six 1.17.0。Pillow 12.2.0 的漏洞审计存在已知记录，因此启动入口要求至少 Pillow 13。
 
 ## 首次使用
 
@@ -155,13 +175,13 @@ bash start.sh analyze tests/fixtures/reference-game.png --output runs/reference.
 
 - `method=platform_edges` 表示经过两条上边缘斜率、转角、对称性和内部前景检查的菱形顶面估计；只适用于通过这些检查的形状，不是任意平台的通用识别。
 
-- 本版仅支持完整 X11 会话。Wayland/XWayland 会明确拒绝启动，不会关闭安全保护或更改桌面会话。
+- Linux 仅支持完整 X11 会话。Wayland/XWayland 会明确拒绝启动。Windows 10 1703+/11 使用独立 Win32 后端，无需 DISPLAY；macOS 不支持。
 - 裁剪区域必须是竖屏游戏内容，宽 180–2400px，高 280–4000px，纵横比约 1.05–2.6。
 - 使用颜色、连通域、背景差分、白点和平台外形估计，不是通用视觉模型。主题变化、特殊平台、遮挡、强抗锯齿和游戏规则变化均可能需要后续适配。
 - 连续模式判断画面已变化并稳定，没有 OCR 确认分数，也没有证明每次跳跃成功。
 - 每次 `run` 在 `runs/UTC时间戳/` 中保存每跳的原始起跳图、计划 JSON、等待落地后的原图与客户端时长。
   即使只运行 1 跳也会保存跳后画面；识别失败时保存 `rejected.png` 和拒绝原因。记录不自动等于成功判定。
-- 仅保存所选游戏区域的最新原图、标注图和检测 JSON。程序运行不联网、不上传截图，也不读取微信聊天数据。
+- 截图只保存所选游戏区域。程序运行不联网、不上传截图，也不读取微信聊天数据。
 - 安装脚本需要访问 PyPI。项目源码未依赖 Windows 控制模块、ADB、OpenCV 或 Tkinter。
 
 ## 文件
@@ -170,6 +190,8 @@ bash start.sh analyze tests/fixtures/reference-game.png --output runs/reference.
 - `wechat_jump/control.py`：稳定性检查、有限次循环、释放鼠标的逻辑。
 - `wechat_jump/calibration.py`：实测样本拟合与校准模型验证。
 - `wechat_jump/x11.py`：X11 窗口、框选、截图和 XTEST 输入。
+- `wechat_jump/windows.py`：Win32 窗口、DPI、截图、SendInput 和输入保护。
+- `install.cmd`、`start.cmd`：Windows 安装与运行入口。
 - `wechat_jump/cli.py`：配置验证和命令行入口。
 - `tests/`：合成画面、真实截图和模拟桌面状态测试。
 - `examples/reference-annotated.png`：原开源演示截图的识别示例，**不是当前用户游戏截图**。

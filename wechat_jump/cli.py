@@ -60,8 +60,9 @@ def choose_game_window(windows, requested=None, read=None, auto=False):
 def automatic_crop(window_rect, screen_size):
     """Use the client rectangle; trim only tiny off-screen borders, at most 8px."""
     left, top, right, bottom = window_rect
-    width, height = screen_size
-    visible = (max(0, left), max(0, top), min(width, right), min(height, bottom))
+    bounds = (0, 0, *screen_size) if len(screen_size) == 2 else screen_size
+    sl, st, sr, sb = bounds
+    visible = (max(sl, left), max(st, top), min(sr, right), min(sb, bottom))
     lost = (visible[0]-left, visible[1]-top, right-visible[2], bottom-visible[3])
     if max(lost) > 8 or visible[2] <= visible[0] or visible[3] <= visible[1]:
         raise ValueError('游戏窗口有较大部分超出屏幕，请先移到屏幕中央再重新设置。')
@@ -152,12 +153,25 @@ def countdown(seconds):
         time.sleep(1)
 
 
+def get_desktop_classes():
+    if sys.platform == 'win32':
+        from .windows import Desktop, WindowsBackend
+        return Desktop, WindowsBackend
+    if sys.platform.startswith('linux'):
+        from .x11 import Desktop, X11Backend
+        return Desktop, X11Backend
+    raise SafetyStop('仅支持 Linux X11 与 Windows 10/11。')
+
+
 def doctor():
     print(f'Python: {sys.version.split()[0]}')
-    print(f'桌面会话: {os.environ.get("XDG_SESSION_TYPE", "unknown")}')
-    print(f'DISPLAY: {"已设置" if os.environ.get("DISPLAY") else "未设置"}')
+    windows = sys.platform == 'win32'
+    print('后端: Windows Win32' if windows else '后端: Linux X11')
+    if not windows:
+        print(f'桌面会话: {os.environ.get("XDG_SESSION_TYPE", "unknown")}')
+        print(f'DISPLAY: {"已设置" if os.environ.get("DISPLAY") else "未设置"}')
     missing = False
-    for distribution in ['Pillow', 'numpy', 'python-xlib']:
+    for distribution in ['Pillow', 'numpy'] + ([] if windows else ['python-xlib']):
         try:
             version = importlib.metadata.version(distribution)
             print(f'{distribution}: {version}')
@@ -168,14 +182,14 @@ def doctor():
             print(f'{distribution}: 未安装')
             missing = True
     print('此检查未连接桌面、未截图、未发送输入。')
-    if os.environ.get('XDG_SESSION_TYPE', '').lower() == 'wayland':
+    if not windows and os.environ.get('XDG_SESSION_TYPE', '').lower() == 'wayland':
         print('本版不支持 Wayland/XWayland。')
         return 2
-    return 2 if missing or not os.environ.get('DISPLAY') else 0
+    return 2 if missing or (not windows and not os.environ.get('DISPLAY')) else 0
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description='Linux X11 微信跳一跳助手（默认单步，Esc 停止）')
+    parser = argparse.ArgumentParser(description='Linux X11 / Windows 10/11 微信跳一跳助手（默认单步，Esc 停止）')
     parser.add_argument('--config', type=Path, default=ROOT/'config.json')
     parser.add_argument('--calibration', type=Path, default=ROOT/'calibration.json',
                         help='实测水平位移校准模型；文件不存在时使用未校准的旧版公式')
@@ -247,11 +261,12 @@ def main(argv=None):
             return 0
 
         if args.command in ['preview', 'run'] and not args.config.is_file():
-            raise SafetyStop('尚未成功保存游戏区域配置。请先运行 bash start.sh setup --auto --preview，'
+            launcher = r'.\start.cmd' if sys.platform == 'win32' else 'bash start.sh'
+            raise SafetyStop(f'尚未成功保存游戏区域配置。请先运行 {launcher} setup --auto --preview，'
                              '看到“配置已保存”后再运行 preview。')
 
-        # No X11 imports or display connection for image-only operations.
-        from .x11 import Desktop, X11Backend
+        # No platform imports or desktop connections for image-only operations.
+        Desktop, Backend = get_desktop_classes()
         desktop = Desktop()
         if args.command in ['windows', 'setup']:
             windows = desktop.windows()
@@ -263,11 +278,13 @@ def main(argv=None):
                 return 0
             if args.pick and args.crop:
                 raise ValueError('--pick 和 --crop 不能同时使用。')
+            if args.pick and sys.platform == 'win32':
+                raise ValueError('Windows 请使用 setup --auto --preview 或 --crop，不支持 --pick。')
             if args.auto and args.window is not None:
                 raise ValueError('--auto 和 --window 不能同时使用。')
             window_id, title, _ = choose_game_window(windows, requested=args.window, auto=args.auto)
             print(f'已选择：{title} ({hex(window_id)})')
-            window = desktop.connection.create_resource_object('window', window_id)
+            window = desktop.window(window_id)
             left, top, right, bottom = desktop.rect(window)
             crop = None
             if args.pick:
@@ -280,15 +297,14 @@ def main(argv=None):
             elif args.crop:
                 crop = [int(v) for v in args.crop.split(',')]
             else:
-                screen = desktop.root.get_geometry()
-                crop = automatic_crop((left, top, right, bottom), (screen.width, screen.height))
+                crop = automatic_crop((left, top, right, bottom), desktop.screen_bounds())
                 print(f'已自动使用游戏窗口区域：{crop[2]}×{crop[3]}px，无需鼠标框选。')
             config = {'version': 1, 'window_id': window_id,
                       'identity': desktop.identity(window), 'crop': crop,
                       'coefficient': args.coefficient, 'head_diameter': args.head_diameter}
             validate_config(config)
-            # Geometry and XTEST validation only; no focus change or mouse input.
-            backend = X11Backend(desktop, config)
+            # Backend/geometry validation only; no focus change or mouse input.
+            backend = Backend(desktop, config)
             save_config(args.config, config)
             print(f'配置已保存：{args.config.resolve()}。')
             if args.preview:
@@ -304,7 +320,7 @@ def main(argv=None):
         if args.head_diameter is not None:
             config['head_diameter'] = args.head_diameter
         validate_config(config)
-        backend = X11Backend(desktop, config)
+        backend = Backend(desktop, config)
         countdown(args.delay)
         if args.command == 'preview':
             save_preview(backend, args.output, config['coefficient'], config['head_diameter'], calibration)
@@ -312,7 +328,8 @@ def main(argv=None):
         def handle_signal(_number, _frame):
             raise KeyboardInterrupt
         signal.signal(signal.SIGTERM, handle_signal)
-        signal.signal(signal.SIGHUP, handle_signal)
+        if hasattr(signal, 'SIGHUP'):
+            signal.signal(signal.SIGHUP, handle_signal)
         session = ROOT/'runs'/datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
         session.mkdir(parents=True)
         print(f'本次记录：{session}（原图、按压时长和落地后画面；不会自动认定成功）')
@@ -331,7 +348,7 @@ def main(argv=None):
             print(f'第 {index} 次按压记录：{json.dumps(timing)}；已保存落地后画面，成功与否待核实。')
         def rejected_frame(image, reason):
             image.save(session/'rejected.png')
-            (session/'rejected.json').write_text(json.dumps({'reason': reason}, ensure_ascii=False)+'\n')
+            (session/'rejected.json').write_text(json.dumps({'reason': reason}, ensure_ascii=False)+'\n', encoding='utf-8')
         count = run_loop(backend, max_jumps=args.max_jumps,
                          coefficient=config['coefficient'], head_diameter=config['head_diameter'],
                          report=before_jump, after_report=after_jump,

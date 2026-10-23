@@ -1,7 +1,6 @@
 import contextlib
 import io
 from pathlib import Path
-from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -71,7 +70,7 @@ class SetupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             missing = Path(temp)/'config.json'
             stderr = io.StringIO()
-            with patch('wechat_jump.x11.Desktop') as desktop:
+            with patch('wechat_jump.cli.get_desktop_classes') as desktop:
                 with contextlib.redirect_stderr(stderr):
                     code = main(['--config', str(missing), 'preview'])
             self.assertEqual(code, 2)
@@ -98,14 +97,13 @@ class SetupTests(unittest.TestCase):
             desktop.windows.return_value = WINDOWS
             desktop.rect.return_value = (1774, 360, 2427, 1520)
             desktop.identity.return_value = {'title': '跳一跳', 'wm_class': [], 'pid': 42}
-            desktop.root.get_geometry.return_value = SimpleNamespace(width=2560, height=1600)
+            desktop.screen_bounds.return_value = (0, 0, 2560, 1600)
             backend.capture.return_value = scene()
-            with patch('wechat_jump.x11.Desktop', return_value=desktop):
-                with patch('wechat_jump.x11.X11Backend', return_value=backend):
-                    with patch('builtins.input', side_effect=AssertionError('must not prompt')):
-                        with contextlib.redirect_stdout(io.StringIO()):
-                            code = main(['--config', str(config), 'setup', '--auto', '--preview',
-                                         '--delay', '0', '--output', str(output)])
+            with patch('wechat_jump.cli.get_desktop_classes', return_value=(lambda: desktop, lambda d, c: backend)):
+                with patch('builtins.input', side_effect=AssertionError('must not prompt')):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        code = main(['--config', str(config), 'setup', '--auto', '--preview',
+                                     '--delay', '0', '--output', str(output)])
             self.assertEqual(code, 0)
             self.assertTrue(config.is_file())
             self.assertTrue(output.is_file())

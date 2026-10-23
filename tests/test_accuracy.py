@@ -18,6 +18,20 @@ from wechat_jump.vision import DetectionError, detect
 
 
 class AccuracyTests(TestCase):
+    def test_narrow_round_platform_with_tall_stem(self):
+        with Image.open(Path(__file__).parent/'fixtures'/'desktop-green-pedestal.png') as original:
+            for width in (360, 699, 1080):
+                for mirrored in (False, True):
+                    with self.subTest(width=width, mirrored=mirrored):
+                        scale = width/original.width
+                        image = original.resize((width, round(original.height*scale)))
+                        if mirrored:
+                            image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                        result = detect(image)
+                        ex = width-1-300*scale if mirrored else 300*scale
+                        self.assertAlmostEqual(result.target[0], ex, delta=5)
+                        self.assertAlmostEqual(result.target[1], 619*scale, delta=5)
+
     def test_textured_marble_and_decorated_roof_have_correct_centers(self):
         for filename, expected in [('desktop-marble.png', (440, 612)),
                                    ('desktop-striped-roof.png', (475, 590))]:
@@ -174,7 +188,7 @@ class CalibrationTests(TestCase):
         with tempfile.TemporaryDirectory() as temp:
             samples, output = Path(temp)/'samples.json', Path(temp)/'calibration.json'
             samples.write_text(json.dumps(self.samples()))
-            with patch('wechat_jump.x11.Desktop') as desktop:
+            with patch('wechat_jump.cli.get_desktop_classes') as desktop:
                 with contextlib.redirect_stdout(io.StringIO()):
                     code = main(['calibrate', str(samples), '--output', str(output)])
             self.assertEqual(code, 0)

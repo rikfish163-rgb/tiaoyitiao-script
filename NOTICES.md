@@ -41,3 +41,7 @@ https://github.com/wangshub/wechat_jump_game/blob/master/resource/image/jump.gif
 `tests/fixtures/`，来源为后续本地运行的游戏窗口原图，分别用于纹理顶面、装饰条与头径、遮挡拒绝回归。
 `examples/desktop-marble-corrected.png` 与 `desktop-striped-roof-corrected.png` 为离线标注版本。
 没有收录用户提交的整张桌面截图；上述游戏素材权利说明继续适用。
+
+`tests/fixtures/desktop-green-pedestal.png` 为分数显示 456 时的游戏区域原图，用于细长底座圆台回归；
+`examples/desktop-green-pedestal-corrected.png` 为离线标注结果。游戏素材权利说明同上。
+Windows 后端依据 Microsoft Win32 与 Pillow 官方文档独立编写，未复制其他项目的 Windows 控制代码；接口来源见 `docs/windows.md`。

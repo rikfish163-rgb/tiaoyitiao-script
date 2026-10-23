@@ -1,3 +1,3 @@
-"""Linux X11 desktop helper for the WeChat jumping minigame."""
+"""Linux X11 and Windows desktop helper for the WeChat jumping minigame."""
 
-__version__ = '0.2.2'
+__version__ = '0.3.0'

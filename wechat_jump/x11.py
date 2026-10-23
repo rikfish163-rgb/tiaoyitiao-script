@@ -28,6 +28,13 @@ class Desktop:
     def close(self):
         self.connection.close()
 
+    def window(self, window_id):
+        return self.connection.create_resource_object('window', window_id)
+
+    def screen_bounds(self):
+        screen = self.root.get_geometry()
+        return (0, 0, screen.width, screen.height)
+
     def prop(self, window, name, kind=X.AnyPropertyType):
         result = window.get_full_property(self.connection.intern_atom(name), kind)
         return None if result is None else result.value

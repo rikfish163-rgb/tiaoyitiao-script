@@ -1,0 +1,33 @@
+name: Python regression tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: python -m pip install -r requirements.txt
+      - name: Test Linux (no desktop input)
+        if: runner.os == 'Linux'
+        run: python -m unittest discover -s tests -v
+      - name: Install using Windows launcher
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: install.cmd
+      - name: Test Windows (no desktop input)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: .venv\Scripts\python.exe -m unittest discover -s tests -v
+      - name: Check Windows command entry point
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: start.cmd --help

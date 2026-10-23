@@ -233,7 +233,9 @@ def detect(image: Image.Image) -> Detection:
     for box in _components(foreground):
         x1, y1, x2, y2, area = box
         bw, bh = x2-x1, y2-y1
-        if (.10*w <= bw <= .75*w and .15*bw <= bh <= 1.4*bw
+        # Include narrow platforms with tall stems; the landing face is
+        # validated separately below, rather than treating the stem as a face.
+        if (.10*w <= bw <= .75*w and .15*bw <= bh <= 2.2*bw
                 and y1 > h*.22+2
                 and area > .002*w*w and abs((x1+x2)/2-px) > .14*w):
             candidates.append(box)
