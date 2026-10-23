@@ -31,3 +31,8 @@ https://github.com/wangshub/wechat_jump_game/blob/master/resource/image/jump.gif
 
 `tests/fixtures/desktop-failed-annotated.png` 是一次错误定位留下的游戏标注图，仅作误判回归素材。
 它带有旧算法的黄框和连线，不是原始未标注画面，也不是正确识别示例。
+
+`tests/fixtures/desktop-green-marker.png` 与 `desktop-striped-platform.png` 是本地一次运行的
+第 8 跳前后原始游戏窗口截图，分别用于验证顶面侧面分离、阴影触边时的平台识别。
+`examples/green-marker-corrected.png` 与 `striped-platform-corrected.png` 是离线标注结果。
+这些图只含游戏窗口；素材权利说明与上述游戏截图相同。

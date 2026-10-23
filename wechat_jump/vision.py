@@ -57,7 +57,9 @@ def _surface_box(rgb, foreground, box):
     if len(xs) < 4:
         return None
     cap_color = np.median(rgb[y1+ys, x1+xs], axis=0)
-    color_match = np.abs(rgb.astype(np.int16)-cap_color).sum(axis=2) <= 36
+    # Adjacent shaded faces can differ by only ~25 RGB levels in total.
+    # Keep that face out so its lower edge cannot pull the landing point down.
+    color_match = np.abs(rgb.astype(np.int16)-cap_color).sum(axis=2) <= 18
     surface = np.zeros_like(foreground)
     surface[y1:y2, x1:x2] = color_match[y1:y2, x1:x2] & foreground[y1:y2, x1:x2]
     cap_x = float(xs.mean()+x1)
@@ -137,6 +139,11 @@ def detect(image: Image.Image) -> Detection:
     foreground = np.abs(rgb.astype(np.int16)-background[:, None, :]).sum(axis=2) > 48
     foreground[:int(h*.22)] = False
     foreground[min(h, round(py+.03*h)):] = False
+    # A thin window border can connect a platform's shadow to the entire
+    # image edge. Remove only the border; validate the landing face below.
+    edge = max(2, round(.005*w))
+    foreground[:, :edge] = False
+    foreground[:, -edge:] = False
     # Search the side opposite the current piece, leaving its body out.
     if px < w/2:
         foreground[:, :round(px+.09*w)] = False
@@ -147,7 +154,7 @@ def detect(image: Image.Image) -> Detection:
         x1, y1, x2, y2, area = box
         bw, bh = x2-x1, y2-y1
         if (.10*w <= bw <= .75*w and .15*bw <= bh <= 1.4*bw
-                and x1 > .01*w and x2 < .99*w and y1 > h*.22+2
+                and y1 > h*.22+2
                 and area > .002*w*w and abs((x1+x2)/2-px) > .14*w):
             candidates.append(box)
     candidates.sort(key=lambda item: item[1])
@@ -165,6 +172,8 @@ def detect(image: Image.Image) -> Detection:
     face = _surface_box(rgb, foreground, candidates[0])
     if face is not None:
         x1, y1, x2, y2 = face
+        if x1 <= .01*w or x2 >= .99*w:
+            raise DetectionError('平台顶面接近画面边缘，无法确认完整落点。')
         bw = x2-x1
         tx, ty = (x1+x2-1)/2, (y1+y2-1)/2
     white = np.all(rgb > 235, axis=2)

@@ -18,6 +18,36 @@ from wechat_jump.vision import DetectionError, detect
 
 
 class AccuracyTests(TestCase):
+    def test_green_face_excludes_similar_side_and_finds_center_marker(self):
+        with Image.open(Path(__file__).parent/'fixtures'/'desktop-green-marker.png') as image:
+            result = detect(image)
+        self.assertEqual(result.method, 'white_marker')
+        self.assertAlmostEqual(result.target[0], 487, delta=4)
+        self.assertAlmostEqual(result.target[1], 583, delta=4)
+        self.assertLess(result.platform_box[3], 670)
+
+    def test_striped_platform_with_shadow_touching_window_border(self):
+        with Image.open(Path(__file__).parent/'fixtures'/'desktop-striped-platform.png') as original:
+            for width in (360, 699, 1080):
+                for mirrored in (False, True):
+                    with self.subTest(width=width, mirrored=mirrored):
+                        scale = width/original.width
+                        image = original.resize((width, round(original.height*scale)))
+                        if mirrored:
+                            image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                        result = detect(image)
+                        expected_x = width-1-207*scale if mirrored else 207*scale
+                        self.assertAlmostEqual(result.target[0], expected_x, delta=5)
+                        self.assertAlmostEqual(result.target[1], 565*scale, delta=5)
+                        self.assertLess(result.platform_box[3], 650*scale)
+
+    def test_clipped_landing_face_is_still_rejected(self):
+        with Image.open(Path(__file__).parent/'fixtures'/'desktop-striped-platform.png') as original:
+            image = Image.new('RGB', original.size, original.getpixel((350, 400)))
+            image.paste(original, (-100, 0))
+        with self.assertRaises(DetectionError):
+            detect(image)
+
     def test_one_occupied_edge_does_not_turn_background_into_target(self):
         image = scene(reverse=True)
         ImageDraw.Draw(image).rectangle((0, 230, 18, 400), fill='#747474')
