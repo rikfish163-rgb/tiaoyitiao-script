@@ -7,6 +7,7 @@
 - 环境：Linux x86_64、Ubuntu GNOME、X11、Python 3.12.3。
 - 独立测试环境中使用 Pillow 13.0.0、NumPy 2.4.4、python-xlib 0.33、six 1.17.0；没有修改全局 Python 包。
 - `python -m unittest discover -s tests -v`：**55 项通过，0 失败**（0.2.0 背景识别、输入计时、实测校准和逐跳记录修复后）。
+- `pytest -q`（使用项目虚拟环境依赖路径）：**55 passed, 12 subtests passed**；`pytest.ini` 明确设置源码路径和测试目录。
 - `python jump.py doctor`：退出码 0，确认会话、依赖；该命令未连接 X server 或发送输入。
 - `python jump.py analyze tests/fixtures/reference-game.png --output examples/reference-annotated.png`：退出码 0，成功生成示例标注图和 JSON。
 - 离线样例识别：棋子约 `(216.2,302.9)`，目标白点 `(144.5,255.5)`，头部直径估计 `16px`，按压估计 `451.1ms`。按压值为模型计算结果，未据此执行游戏。
